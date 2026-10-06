@@ -1,0 +1,6 @@
+bin/
+obj/
+publish/
+installer/
+dist/
+msix/out/
