@@ -30,11 +30,17 @@ jobs:
         run: choco install innosetup -y --no-progress
 
       - name: Gerar o instalador (com as animações)
-        shell: cmd
+        shell: pwsh
         run: |
-          set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-          if not exist "%ISCC%" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
-          "%ISCC%" AzulGroove.iss
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "$env:ProgramFiles\Inno Setup 6\ISCC.exe" }
+          & $iscc AzulGroove.iss
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "A animacao deu erro. Gerando o instalador SEM animacao."
+            Get-Content AzulGroove.iss | Where-Object { $_ -notmatch 'installer-animation' } | Set-Content AzulGroove-semanim.iss -Encoding utf8
+            & $iscc AzulGroove-semanim.iss
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
 
       - name: Juntar os arquivos finais
         shell: pwsh
