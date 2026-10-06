@@ -22,12 +22,14 @@ procedure DrawBars(Img: TBitmapImage);
 var
   W, H, i, bw, gap, total, x0, left, v, bh, cy, maxH: Integer;
   C: TCanvas;
+  R: TRect;
 begin
   if (BaseBmp = nil) or (Img = nil) then Exit;
   W := BaseBmp.Width;
   H := BaseBmp.Height;
   C := Img.Bitmap.Canvas;
-  C.Draw(0, 0, BaseBmp);               { repõe o fundo }
+  R.Left := 0; R.Top := 0; R.Right := W; R.Bottom := H;
+  C.CopyRect(R, BaseBmp.Canvas, R);    { repõe o fundo }
 
   bw := W * 6 div 100;                 { largura de cada barra }
   gap := W * 3 div 100;
