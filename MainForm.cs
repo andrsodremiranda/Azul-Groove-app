@@ -39,6 +39,7 @@ public class MainForm : Form
     readonly WebView2 web = new() { Dock = DockStyle.Fill };
     readonly AppSettings cfg = AppSettings.Load();
     NotifyIcon tray = null!;
+    ContextMenuStrip trayMenu = null!;
     ToolStripMenuItem miChat = null!, miHotkeyOn = null!, miKeys = null!, miTray = null!, miTheme = null!;
     bool exiting, tipShown, skipSplash, pendingSitePref;
     string? pageTheme; // "light" | "dark" (enviado pela página)
@@ -64,6 +65,7 @@ public class MainForm : Form
     void BuildTray()
     {
         var menu = new ContextMenuStrip();
+        trayMenu = menu;
 
         miChat = new ToolStripMenuItem("Abrir chat", null, (_, _) => ShowChat());
         var miHome = new ToolStripMenuItem("Abrir início", null, (_, _) => { ShowWindow(); NavigateTo(HomeUrl); });
@@ -115,7 +117,110 @@ public class MainForm : Form
 
         tray = new NotifyIcon { Icon = Icon ?? SystemIcons.Application, Text = "Azul Groove", Visible = true, ContextMenuStrip = menu };
         tray.DoubleClick += (_, _) => ShowChat();
+        ApplyMenuTheme(cfg.Theme == 1 ? false : cfg.Theme == 2 ? true : WindowsIsDark());
         UpdateLabels();
+    }
+
+
+    // ================= Menu da bandeja (claro / escuro) =================
+    void ApplyMenuTheme(bool dark)
+    {
+        if (trayMenu == null) return;
+        var bg = dark ? Color.FromArgb(24, 27, 36) : Color.FromArgb(250, 251, 254);
+        var fg = dark ? Color.FromArgb(235, 238, 247) : Color.FromArgb(28, 32, 48);
+        var renderer = new MenuRenderer(dark);
+        StyleMenu(trayMenu, renderer, bg, fg);
+    }
+
+    static void StyleMenu(ToolStripDropDown dd, ToolStripRenderer renderer, Color bg, Color fg)
+    {
+        dd.Renderer = renderer;
+        dd.BackColor = bg;
+        dd.ForeColor = fg;
+        dd.Font = new Font("Segoe UI", 9.5f);
+        if (dd is ToolStripDropDownMenu ddm) { ddm.ShowImageMargin = false; ddm.ShowCheckMargin = true; }
+        if (!dd.IsHandleCreated) dd.HandleCreated += (_, _) => RoundCorners(dd.Handle);
+        else RoundCorners(dd.Handle);
+
+        foreach (ToolStripItem it in dd.Items)
+        {
+            it.BackColor = bg;
+            it.ForeColor = fg;
+            it.Padding = new Padding(4, 5, 4, 5);
+            if (it is ToolStripMenuItem mi && mi.HasDropDownItems)
+                StyleMenu(mi.DropDown, renderer, bg, fg);
+        }
+    }
+
+    static void RoundCorners(IntPtr h)
+    {
+        try { int round = 2; DwmSetWindowAttribute(h, 33, ref round, sizeof(int)); } catch { }
+    }
+
+    sealed class MenuColors : ProfessionalColorTable
+    {
+        readonly bool dark;
+        public MenuColors(bool dark) { this.dark = dark; UseSystemColors = false; }
+        Color Bg => dark ? Color.FromArgb(24, 27, 36) : Color.FromArgb(250, 251, 254);
+        Color Hover => dark ? Color.FromArgb(46, 52, 80) : Color.FromArgb(224, 229, 250);
+        Color Line => dark ? Color.FromArgb(52, 57, 75) : Color.FromArgb(208, 213, 228);
+        public override Color ToolStripDropDownBackground => Bg;
+        public override Color ImageMarginGradientBegin => Bg;
+        public override Color ImageMarginGradientMiddle => Bg;
+        public override Color ImageMarginGradientEnd => Bg;
+        public override Color MenuBorder => Line;
+        public override Color MenuItemBorder => Hover;
+        public override Color MenuItemSelected => Hover;
+        public override Color MenuItemSelectedGradientBegin => Hover;
+        public override Color MenuItemSelectedGradientEnd => Hover;
+        public override Color MenuItemPressedGradientBegin => Hover;
+        public override Color MenuItemPressedGradientMiddle => Hover;
+        public override Color MenuItemPressedGradientEnd => Hover;
+        public override Color SeparatorDark => Line;
+        public override Color SeparatorLight => Bg;
+        public override Color CheckBackground => Hover;
+        public override Color CheckSelectedBackground => Hover;
+        public override Color CheckPressedBackground => Hover;
+    }
+
+    sealed class MenuRenderer : ToolStripProfessionalRenderer
+    {
+        readonly bool dark;
+        readonly Color fg, dim, accent;
+        public MenuRenderer(bool dark) : base(new MenuColors(dark))
+        {
+            this.dark = dark;
+            fg = dark ? Color.FromArgb(235, 238, 247) : Color.FromArgb(28, 32, 48);
+            dim = dark ? Color.FromArgb(120, 126, 150) : Color.FromArgb(150, 155, 175);
+            accent = Color.FromArgb(125, 140, 255);
+            RoundedEdges = false;
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? fg : dim;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            e.ArrowColor = fg;
+            base.OnRenderArrow(e);
+        }
+
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var r = e.ImageRectangle;
+            using var pen = new Pen(accent, 2f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+            g.DrawLines(pen, new[]
+            {
+                new Point(r.Left + 4, r.Top + r.Height / 2),
+                new Point(r.Left + r.Width / 2 - 1, r.Bottom - 5),
+                new Point(r.Right - 4, r.Top + 5)
+            });
+        }
     }
 
     string HotkeyText => cfg.HotkeyOn ? Presets[cfg.Preset].Label : "";
@@ -214,6 +319,7 @@ public class MainForm : Form
 
     void ApplyTheme(bool dark)
     {
+        ApplyMenuTheme(dark);
         BackColor = dark ? Color.FromArgb(15, 17, 23) : Color.FromArgb(244, 246, 251);
         web.DefaultBackgroundColor = BackColor;
         if (!IsHandleCreated) return;
