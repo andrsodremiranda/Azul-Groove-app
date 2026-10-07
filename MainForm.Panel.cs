@@ -72,7 +72,8 @@ public partial class MainForm
 
     void GoStart()
     {
-        if (cfg.StartPage == 1) web.CoreWebView2.Navigate(HomeUrl);
+        if (cfg.StartPage == 2) web.CoreWebView2.Navigate(ChatUrl);
+        else if (cfg.StartPage == 1) web.CoreWebView2.Navigate(HomeUrl);
         else ShowPanel();
     }
 
@@ -170,7 +171,7 @@ public partial class MainForm
             case "tray":
                 miTray.Checked = v == 1;
                 break;
-            case "start" when v == 0 || v == 1:
+            case "start" when v >= 0 && v <= 2:
                 cfg.StartPage = v; cfg.Save();
                 break;
         }
@@ -471,7 +472,7 @@ select{background:var(--bg);color:var(--tx);border:1px solid var(--line);border-
 <div class="r"><div>Atalho para abrir o chat<small>Funciona mesmo com o app na bandeja</small></div><label class="sw"><input type="checkbox" id="hk"><span></span></label></div>
 <div class="r"><div>Teclas do atalho<small id="hkinfo"></small></div><select id="preset"></select></div>
 <div class="r"><div>Continuar na bandeja ao fechar<small>O X da janela só esconde o app</small></div><label class="sw"><input type="checkbox" id="tray"><span></span></label></div>
-<div class="r"><div>Ao abrir o app, mostrar</div><select id="start"><option value="0">Este painel</option><option value="1">Site Azul Groove</option></select></div>
+<div class="r"><div>Ao abrir o app, mostrar</div><select id="start"><option value="0">Este painel</option><option value="1">Site Azul Groove</option><option value="2">Chat com a IA</option></select></div>
 <div class="r"><div>Dados do app<small>Login, cookies e configurações</small></div><button class="btn o" id="data">Abrir pasta</button></div>
 </div>
 

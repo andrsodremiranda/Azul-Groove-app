@@ -36,6 +36,9 @@ public partial class MainForm : Form
     internal static string DataDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AzulGroove");
 
+    // true só na primeiríssima abertura (a pasta de dados ainda não existe; o WebView2 a cria logo depois)
+    static readonly bool firstRun = !Directory.Exists(DataDir);
+
     readonly WebView2 web = new() { Dock = DockStyle.Fill };
     readonly AppSettings cfg = AppSettings.Load();
     NotifyIcon tray = null!;
@@ -442,6 +445,37 @@ h1{margin:0;color:var(--tx);font-size:32px;animation:up .8s .3s both}
 <div class="tx"><p class="t1">Finalizando a atualização…</p><p class="t2">✅ Atualizado! Você está na versão @TO@</p></div><div class="bar"><b></b></div></body></html>
 """;
 
+    // Animação mostrada só na primeira instalação (estilo "configuração" do Windows 11)
+    const string SetupSplashHtml = """
+<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="dark light"><style>
+:root{--bg:#0f1117;--tx:#fff;--mu:#9aa3b2}
+@media (prefers-color-scheme:light){:root{--bg:#f4f6fb;--tx:#14161a;--mu:#646b78}}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;font-family:"Segoe UI",system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px}
+.logo{width:96px;height:96px;border-radius:26px;background:linear-gradient(135deg,#5865f2,#7a5cff);display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 16px 50px rgba(88,101,242,.5);animation:pop .8s cubic-bezier(.2,1.4,.4,1) both}
+.logo i{display:block;width:9px;height:30px;border-radius:5px;background:#fff;animation:eq 1s ease-in-out infinite}
+.logo i:nth-child(1){animation-delay:-.9s}.logo i:nth-child(2){animation-delay:-.65s}.logo i:nth-child(3){animation-delay:-.4s}.logo i:nth-child(4){animation-delay:-.75s}.logo i:nth-child(5){animation-delay:-.2s}
+.msgs{position:relative;width:420px;height:44px;text-align:center}
+.msgs p{position:absolute;inset:0;margin:0;opacity:0;color:var(--tx);font-size:26px;font-weight:300;letter-spacing:.3px}
+.m1{animation:msg 1.6s .5s both}.m2{animation:msg 1.6s 2.1s both}.m3{animation:msg 1.6s 3.7s both}
+.m4{animation:last .6s 5.3s forwards;font-weight:600!important}
+.dots{display:flex;gap:10px;height:12px;animation:up .6s .3s both}
+.dots b{width:8px;height:8px;border-radius:50%;background:var(--tx);animation:orbit 1.2s ease-in-out infinite}
+.dots b:nth-child(2){animation-delay:.15s}.dots b:nth-child(3){animation-delay:.3s}.dots b:nth-child(4){animation-delay:.45s}
+.done .dots{display:none}
+.sub{color:var(--mu);font-size:13px;margin:0;animation:up .8s .6s both}
+@keyframes pop{from{transform:scale(.3) rotate(-12deg);opacity:0}to{transform:none;opacity:1}}
+@keyframes eq{0%,100%{height:14px}50%{height:50px}}
+@keyframes up{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+@keyframes msg{0%{opacity:0;transform:translateY(10px)}20%,80%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px)}}
+@keyframes last{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes orbit{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-8px);opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01s!important;animation-iteration-count:1!important}}
+</style></head><body><div class="logo"><i></i><i></i><i></i><i></i><i></i></div>
+<div class="msgs"><p class="m1">Olá!</p><p class="m2">Estamos preparando tudo para você</p><p class="m3">Quase lá…</p><p class="m4">Tudo pronto!</p></div>
+<div class="dots"><b></b><b></b><b></b><b></b></div><p class="sub">Primeira configuração do Azul Groove</p></body></html>
+""";
+
     async Task PlaySplashAsync()
     {
         var upd = ConsumeUpdateMarker(); // existe se o app acabou de ser atualizado pelo próprio painel
@@ -451,6 +485,11 @@ h1{margin:0;color:var(--tx);font-size:32px;animation:up .8s .3s both}
             justUpdated = true;
             wait = 4300;
             web.CoreWebView2.NavigateToString(UpdateSplashHtml.Replace("@FROM@", upd.Value.from).Replace("@TO@", upd.Value.to));
+        }
+        else if (firstRun)
+        {
+            wait = 6400; // dura o suficiente para as 4 mensagens
+            web.CoreWebView2.NavigateToString(SetupSplashHtml);
         }
         else web.CoreWebView2.NavigateToString(SplashHtml);
 
@@ -591,7 +630,7 @@ sealed class AppSettings
     public int Preset { get; set; } = 0;           // qual combinação de teclas
     public bool TrayOnClose { get; set; } = true;  // X da janela manda para a bandeja
     public int Theme { get; set; } = 0;            // 0 = automático (Windows), 1 = claro, 2 = escuro
-    public int StartPage { get; set; } = 0;        // 0 = painel do app, 1 = site
+    public int StartPage { get; set; } = 0;        // 0 = painel do app (padrão), 1 = site, 2 = chat
 
     static string FilePath => Path.Combine(MainForm.DataDir, "settings.json");
 
@@ -602,6 +641,7 @@ sealed class AppSettings
             var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
             if (s.Preset < 0 || s.Preset > 2) s.Preset = 0;
             if (s.Theme < 0 || s.Theme > 2) s.Theme = 0;
+            if (s.StartPage < 0 || s.StartPage > 2) s.StartPage = 0;
             return s;
         }
         catch { return new AppSettings(); }
