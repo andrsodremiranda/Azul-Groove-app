@@ -5,7 +5,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace AzulGroove;
 
-public class MainForm : Form
+public partial class MainForm : Form
 {
     // >>> Troque aqui se o endereço do site mudar <<<
     const string HomeUrl = "https://azul-groove.vercel.app/";
@@ -69,6 +69,7 @@ public class MainForm : Form
 
         miChat = new ToolStripMenuItem("Abrir chat", null, (_, _) => ShowChat());
         var miHome = new ToolStripMenuItem("Abrir início", null, (_, _) => { ShowWindow(); NavigateTo(HomeUrl); });
+        var miPanel = new ToolStripMenuItem("Abrir painel", null, (_, _) => { ShowWindow(); ShowPanel(); });
 
         miHotkeyOn = new ToolStripMenuItem("Atalho de teclado para abrir o chat") { CheckOnClick = true, Checked = cfg.HotkeyOn };
         miHotkeyOn.CheckedChanged += (_, _) => { cfg.HotkeyOn = miHotkeyOn.Checked; cfg.Save(); RegisterHotkey(); UpdateLabels(); };
@@ -111,7 +112,7 @@ public class MainForm : Form
 
         menu.Items.AddRange(new ToolStripItem[]
         {
-            miChat, miHome, new ToolStripSeparator(),
+            miChat, miPanel, miHome, new ToolStripSeparator(),
             miTheme, miHotkeyOn, miKeys, miTray, new ToolStripSeparator(), miExit
         });
 
@@ -234,9 +235,11 @@ public class MainForm : Form
     {
         if (!IsHandleCreated) return;
         UnregisterHotKey(Handle, HOTKEY_ID);
+        hotkeyOk = true;
         if (!cfg.HotkeyOn) return;
         var p = Presets[cfg.Preset];
-        if (!RegisterHotKey(Handle, HOTKEY_ID, p.Mod | MOD_NOREPEAT, (uint)p.Key))
+        hotkeyOk = RegisterHotKey(Handle, HOTKEY_ID, p.Mod | MOD_NOREPEAT, (uint)p.Key);
+        if (!hotkeyOk)
             tray.ShowBalloonTip(4000, "Azul Groove",
                 $"Não foi possível usar {p.Label} (outro programa já usa). Escolha outra tecla no ícone da bandeja.",
                 ToolTipIcon.Warning);
@@ -257,12 +260,22 @@ public class MainForm : Form
         web.Focus();
     }
 
+    // Compara só host + caminho (ignora ?query e #fragmento). Antes, "StartsWith" fazia o botão
+    // "Site Azul Groove" não fazer nada quando o app já estava em qualquer página do site.
+    static bool SamePage(string? current, string target)
+    {
+        if (!Uri.TryCreate(current, UriKind.Absolute, out var a)) return false;
+        if (!Uri.TryCreate(target, UriKind.Absolute, out var b)) return false;
+        return string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(a.AbsolutePath.TrimEnd('/'), b.AbsolutePath.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+    }
+
     void NavigateTo(string url)
     {
         skipSplash = true; // se a animação ainda está rolando, pula o "voltar para o início"
         var cw = web.CoreWebView2;
         if (cw == null) return;
-        if (!(cw.Source ?? "").StartsWith(url)) cw.Navigate(url);
+        if (!SamePage(cw.Source, url)) cw.Navigate(url);
     }
 
     /// <summary>Traz o app para a frente e abre o chat (chamado pelo atalho, pela bandeja e por um 2º clique no .exe).</summary>
@@ -399,15 +412,55 @@ p{margin:0;color:var(--mu);animation:up .8s .55s both}
 </style></head><body><div class="logo"><i></i><i></i><i></i><i></i><i></i></div><h1>Azul Groove</h1><p>Carregando…</p><div class="bar"><b></b></div></body></html>
 """;
 
+    // Animação mostrada na primeira abertura depois de uma atualização
+    const string UpdateSplashHtml = """
+<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="dark light"><style>
+:root{--bg:#0f1117;--tx:#fff;--mu:#9aa3b2}
+@media (prefers-color-scheme:light){:root{--bg:#f4f6fb;--tx:#14161a;--mu:#646b78}}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;font-family:"Segoe UI",system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px}
+.logo{width:120px;height:120px;border-radius:32px;background:linear-gradient(135deg,#5865f2,#7a5cff);display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 20px 60px rgba(88,101,242,.55);animation:pop .8s cubic-bezier(.2,1.4,.4,1) both,glow 2s ease-in-out .8s infinite}
+.logo i{display:block;width:11px;height:36px;border-radius:6px;background:#fff;animation:eq 1s ease-in-out infinite}
+.logo i:nth-child(1){animation-delay:-.9s}.logo i:nth-child(2){animation-delay:-.65s}.logo i:nth-child(3){animation-delay:-.4s}.logo i:nth-child(4){animation-delay:-.75s}.logo i:nth-child(5){animation-delay:-.2s}
+h1{margin:0;color:var(--tx);font-size:32px;animation:up .8s .3s both}
+.v{color:var(--tx);font-size:18px;font-weight:600;padding:5px 16px;border-radius:30px;background:rgba(88,101,242,.25);animation:up .8s .5s both}
+.tx{display:grid;text-align:center;animation:up .8s .6s both}
+.tx p{grid-area:1/1;margin:0;color:var(--mu)}
+.t1{animation:hide .3s 2.7s forwards}
+.t2{opacity:0;color:var(--tx)!important;font-weight:600;animation:show .5s 2.9s forwards}
+.bar{width:200px;height:5px;border-radius:5px;background:rgba(127,127,127,.25);overflow:hidden;animation:up .8s .7s both}
+.bar b{display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,#5865f2,#7a5cff);animation:fill 2.6s .4s ease-in-out forwards}
+@keyframes pop{from{transform:scale(.3) rotate(-12deg);opacity:0}to{transform:none;opacity:1}}
+@keyframes eq{0%,100%{height:16px}50%{height:58px}}
+@keyframes glow{50%{box-shadow:0 20px 90px rgba(122,92,255,.85)}}
+@keyframes up{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fill{to{width:100%}}
+@keyframes hide{to{opacity:0}}
+@keyframes show{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01s!important;animation-delay:0s!important;animation-iteration-count:1!important}}
+</style></head><body><div class="logo"><i></i><i></i><i></i><i></i><i></i></div><h1>Azul Groove</h1><div class="v">@FROM@ → @TO@</div>
+<div class="tx"><p class="t1">Finalizando a atualização…</p><p class="t2">✅ Atualizado! Você está na versão @TO@</p></div><div class="bar"><b></b></div></body></html>
+""";
+
     async Task PlaySplashAsync()
     {
-        web.CoreWebView2.NavigateToString(SplashHtml);
-        await Task.Delay(2300);
+        var upd = ConsumeUpdateMarker(); // existe se o app acabou de ser atualizado pelo próprio painel
+        int wait = 2300;
+        if (upd != null)
+        {
+            justUpdated = true;
+            wait = 4300;
+            web.CoreWebView2.NavigateToString(UpdateSplashHtml.Replace("@FROM@", upd.Value.from).Replace("@TO@", upd.Value.to));
+        }
+        else web.CoreWebView2.NavigateToString(SplashHtml);
+
+        await Task.Delay(wait);
         if (skipSplash || IsDisposed) return;
         try { await web.CoreWebView2.ExecuteScriptAsync("document.body.style.transition='opacity .35s';document.body.style.opacity=0"); } catch { }
         await Task.Delay(380);
         if (skipSplash || IsDisposed) return;
-        web.CoreWebView2.Navigate(HomeUrl);
+        if (justUpdated) ShowPanel(); // depois de atualizar, abre o painel e mostra as novidades
+        else GoStart();
     }
 
     // ================= WebView2 =================
@@ -446,6 +499,7 @@ p{margin:0;color:var(--mu);animation:up .8s .55s both}
         await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(ThemeScript);
         web.CoreWebView2.WebMessageReceived += (_, e) =>
         {
+            if (HandlePanelMessage(e)) return;
             var t = e.TryGetWebMessageAsString();
             if (t != "light" && t != "dark") return;
             pageTheme = t;
@@ -469,6 +523,8 @@ p{margin:0;color:var(--mu);animation:up .8s .55s both}
         // Navegação na mesma janela: sites externos abrem no navegador padrão
         web.CoreWebView2.NavigationStarting += (_, e) =>
         {
+            // Saiu do painel local (foi para o site)? Então a página não é mais o painel.
+            if (e.Uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)) panelActive = false;
             if (!IsInAppHost(e.Uri) && !e.Uri.StartsWith("about:") && !e.Uri.StartsWith("data:"))
             {
                 e.Cancel = true;
@@ -535,6 +591,7 @@ sealed class AppSettings
     public int Preset { get; set; } = 0;           // qual combinação de teclas
     public bool TrayOnClose { get; set; } = true;  // X da janela manda para a bandeja
     public int Theme { get; set; } = 0;            // 0 = automático (Windows), 1 = claro, 2 = escuro
+    public int StartPage { get; set; } = 0;        // 0 = painel do app, 1 = site
 
     static string FilePath => Path.Combine(MainForm.DataDir, "settings.json");
 
