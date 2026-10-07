@@ -383,8 +383,18 @@ public partial class MainForm
             try { tray.ShowBalloonTip(3000, "Azul Groove", "Atualização pronta. O app será reiniciado…", ToolTipIcon.Info); } catch { }
             await Task.Delay(5000);
 
-            // Abre o instalador (modo "um clique": instala sozinho e abre o app novo) e fecha este app
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true });
+            // Instalação silenciosa (Inno Setup): sem assistente, sem janelas. Quando o instalador
+            // termina, o cmd abre o app novo, que mostra a animação de "atualizado".
+            var appExe = Environment.ProcessPath ?? Application.ExecutablePath;
+            var silent = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS";
+            var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe")
+            {
+                Arguments = $"/c \"\"{file}\" {silent} & start \"\" \"{appExe}\"\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+            };
+            System.Diagnostics.Process.Start(psi);
             exiting = true;
             Close();
         }
